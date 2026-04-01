@@ -1,0 +1,216 @@
+# Installing 
+!pip install -q google-genai PyPDF2
+
+# Imports and API Setup
+from google import genai
+from google.colab import userdata
+import PyPDF2
+import json
+import re
+
+try:
+    GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    print("✅ API Key loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading API key: {e}")
+    print("👉 Add GEMINI_API_KEY to the 🔑 Secrets panel in Colab left sidebar")
+
+# full study agent class
+class StudyAgent:
+
+    def __init__(self, model_name: str = "gemini-2.0-flash"):
+        self.model_name = model_name
+        self.chat_history = []
+        self.system_persona = (
+            "You are a helpful, patient, and encouraging study assistant. "
+            "You explain things clearly, use examples, and always check if the "
+            "student understands. Keep answers educational and accurate."
+        )
+        print(f"🤖 StudyAgent ready! Using model: {model_name}")
+
+    def _call_model(self, prompt: str) -> str:
+        full_prompt = f"{self.system_persona}\n\n{prompt}"
+        try:
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=full_prompt
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Model error: {e}"
+
+    # ── 1. Q&A ──────────────────────────────────────────────────────────────
+    def ask(self, question: str) -> str:
+        self.chat_history.append(f"Student: {question}")
+        context = "\n".join(self.chat_history[-6:])
+        prompt = f"""
+Previous conversation:
+{context}
+
+Answer the student's latest question clearly and helpfully.
+If it's a subject-specific question, explain the concept well.
+End with one follow-up question to check understanding.
+"""
+        answer = self._call_model(prompt)
+        self.chat_history.append(f"Assistant: {answer}")
+        return answer
+
+    def clear_history(self):
+        self.chat_history = []
+        print("🗑️ Chat history cleared.")
+
+    # ── 2. Summarizer ────────────────────────────────────────────────────────
+    def summarize(self, text: str, detail_level: str = "medium") -> str:
+        length_map = {
+            "brief": "2-3 sentences",
+            "medium": "one short paragraph with key bullet points",
+            "detailed": "comprehensive notes with all key concepts, definitions, and examples"
+        }
+        length_instruction = length_map.get(detail_level, length_map["medium"])
+        prompt = f"""
+Summarize the following study material in {length_instruction}.
+Highlight the most important concepts a student should remember.
+Use clear, simple language.
+
+TEXT TO SUMMARIZE:
+---
+{text}
+---
+"""
+        return self._call_model(prompt)
+
+    def summarize_pdf(self, pdf_path: str, detail_level: str = "medium") -> str:
+        try:
+            with open(pdf_path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                text = ""
+                for page in reader.pages:
+                    text += page.extract_text() or ""
+            if not text.strip():
+                return "❌ Could not extract text from PDF (it may be image-based)."
+            print(f"📄 Extracted {len(text)} characters from PDF. Summarizing...")
+            return self.summarize(text[:12000], detail_level)
+        except FileNotFoundError:
+            return f"❌ File not found: {pdf_path}"
+        except Exception as e:
+            return f"❌ PDF error: {e}"
+
+    # ── 3. Quiz Generator ────────────────────────────────────────────────────
+    def generate_quiz(self, topic: str, num_questions: int = 5,
+                      difficulty: str = "medium", quiz_type: str = "mcq") -> dict:
+        type_instructions = {
+            "mcq": "multiple choice questions with 4 options (A, B, C, D). Mark the correct answer.",
+            "true_false": "true/false questions. State if the answer is True or False.",
+            "short_answer": "short answer questions with a 1-2 sentence model answer."
+        }
+        instructions = type_instructions.get(quiz_type, type_instructions["mcq"])
+        prompt = f"""
+Generate {num_questions} {difficulty}-difficulty {instructions} about: {topic}
+
+Return ONLY valid JSON in this exact format, no extra text:
+{{
+  "topic": "{topic}",
+  "questions": [
+    {{
+      "id": 1,
+      "question": "Question text here?",
+      "options": ["A) option", "B) option", "C) option", "D) option"],
+      "answer": "A) correct option",
+      "explanation": "Why this is correct."
+    }}
+  ]
+}}
+For true_false or short_answer, options can be an empty list [].
+"""
+        raw = self._call_model(prompt)
+        cleaned = re.sub(r"```(?:json)?\n?", "", raw).strip().rstrip("`")
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return {"error": "Could not parse quiz JSON", "raw_response": raw}
+
+    def take_quiz(self, topic: str, num_questions: int = 5, difficulty: str = "medium"):
+        print(f"\n📝 Generating quiz on: {topic}...")
+        quiz = self.generate_quiz(topic, num_questions, difficulty, "mcq")
+
+        if "error" in quiz:
+            print(f"❌ Quiz error: {quiz['error']}")
+            return
+
+        score = 0
+        questions = quiz.get("questions", [])
+
+        print(f"\n{'='*50}")
+        print(f"  QUIZ: {quiz.get('topic', topic)}")
+        print(f"  {len(questions)} Questions | Difficulty: {difficulty}")
+        print(f"{'='*50}\n")
+
+        for i, q in enumerate(questions, 1):
+            print(f"Q{i}. {q['question']}")
+            for opt in q.get("options", []):
+                print(f"    {opt}")
+            user_answer = input("\nYour answer (A/B/C/D): ").strip().upper()
+            correct = q["answer"]
+            if user_answer and correct.startswith(user_answer):
+                print("✅ Correct!")
+                score += 1
+            else:
+                print(f"❌ Incorrect. Correct answer: {correct}")
+            print(f"💡 {q.get('explanation', '')}\n")
+
+        pct = (score / len(questions)) * 100 if questions else 0
+        print(f"{'='*50}")
+        print(f"  RESULT: {score}/{len(questions)} ({pct:.0f}%)")
+        if pct >= 80:
+            print("  🏆 Excellent! You've mastered this topic!")
+        elif pct >= 60:
+            print("  👍 Good job! Review the missed questions.")
+        else:
+            print("  📖 Keep studying! Try again after reviewing.")
+        print(f"{'='*50}")
+
+    # ── 4. Concept Explainer ─────────────────────────────────────────────────
+    def explain(self, concept: str, level: str = "high school", style: str = "normal") -> str:
+        style_map = {
+            "normal": "with clear steps and examples",
+            "analogy": "using a real-world analogy that makes it easy to visualize",
+            "eli5": "as simply as possible, like explaining to a young child"
+        }
+        style_instruction = style_map.get(style, style_map["normal"])
+        prompt = f"""
+Explain the following concept to a {level} student, {style_instruction}.
+
+Structure your explanation like this:
+1. **What it is** (simple 1-sentence definition)
+2. **Why it matters** (real-world importance)
+3. **Step-by-step breakdown** (core ideas in logical order)
+4. **Example** (a concrete, relatable example)
+5. **Key takeaway** (the one thing to remember)
+
+CONCEPT: {concept}
+"""
+        return self._call_model(prompt)
+
+    # ── 5. Study Plan Generator ──────────────────────────────────────────────
+    def create_study_plan(self, subject: str, days_available: int,
+                          hours_per_day: float, goal: str = "understand the basics") -> str:
+        prompt = f"""
+Create a realistic {days_available}-day study plan for: {subject}
+- Hours per day available: {hours_per_day}
+- Goal: {goal}
+
+For each day, specify:
+- Topics to cover
+- Resources/activities
+- A mini-goal or milestone
+
+Keep it practical, motivating, and well-paced.
+Include review sessions and practice time.
+"""
+        return self._call_model(prompt)
+
+print("✅ StudyAgent class loaded!")
+
+# initialize
+agent = StudyAgent()
