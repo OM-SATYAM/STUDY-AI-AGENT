@@ -45,33 +45,112 @@ Click **Runtime → Run all** and you're ready! 🎉
 ```python
 answer = agent.ask("What is Artificial Intelligence?")
 print(answer)
+```
+---
 
-• Summarize Your Notes
+**# Summarize Your Notes**
+```python
 summary = agent.summarize(my_notes, detail_level="detailed")
 # detail_level options: 'brief' | 'medium' | 'detailed'
+```
+---
 
-• Summarize a PDF
+**# Summarize a PDF**
+``` python
 # Upload your PDF to Colab first, then:
 summary = agent.summarize_pdf("/content/my_notes.pdf")
+```
+---
 
-• Take an Interactive Quiz
+**# Take an Interactive Quiz**
+```python
 agent.take_quiz(
     topic="Python programming basics",
     num_questions=5,
     difficulty="medium"   # 'easy' | 'medium' | 'hard'
 )
+```
+---
 
-• Explain a Concept
+**# Explain a Concept**
+```python
 explanation = agent.explain(
     concept="Neural Networks",
     level="high school",   # 'elementary' | 'high school' | 'university' | 'expert'
     style="analogy"        # 'normal' | 'analogy' | 'eli5'
 )
+```
+---
 
-• Create a Study Plan
+**# Create a Study Plan** 
+```python
 plan = agent.create_study_plan(
     subject="Data Science with Python",
     days_available=14,
     hours_per_day=2,
     goal="build and evaluate ML models"
 )
+```
+---
+
+⚙️ **Configuration Options**
+| Parameter | Options | Default |
+|---|---|---|
+| detail_level | brief, medium, detailed | medium |
+| difficulty | easy, medium, hard | medium |
+| quiz_type | mcq, true_false, short_answer | mcq |
+| style | normal, analogy, eli5 | normal |
+
+---
+
+**🔧 Troubleshooting**
+
+GEMINI_API_KEY **not found**
+→ Make sure you added it to Colab **Secrets** (🔑 icon), not as a regular variable, and toggled notebook access ON.
+
+**Rate limit error (429)**
+→ You hit the free tier limit. Wait 1 minute and try again.
+
+**Quiz JSON error**
+→ Just re-run the cell. The model occasionally adds extra formatting which the code auto-cleans, but retrying fixes it.
+
+**PDF shows 0 characters**
+→ Your PDF is image/scanned based. Copy-paste the text manually instead.
+
+---
+
+**📦 Dependencies**
+
+• google-genai
+
+• PyPDF2
+
+These are installed automatically in Cell 1 of the notebook.
+
+---
+
+**🛠️ Built With**
+
+•Google Gemini 2.0 — AI model
+
+•Google Colab — Runtime environment
+
+•PyPDF2 — PDF text extraction
+
+---
+
+**🤝 Contributing**
+
+Pull requests are welcome! Some ideas for future features:
+
+• Flashcard generator
+
+• Math problem solver
+
+• Code debugger assistant
+
+• Voice input support
+
+---
+
+**Made with ❤️ for students everywhere!!**
